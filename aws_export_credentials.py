@@ -20,6 +20,8 @@ import subprocess
 
 from botocore.session import Session
 
+__version__ = '0.1.1'
+
 DESCRIPTION ="""\
 Get AWS credentials from a profile to inject into other programs.
 
@@ -40,9 +42,15 @@ def main():
     group.add_argument('--env-export', action='store_const', const='env-export', dest='format', help="Print as env vars prefixed by 'export ' for shell sourcing")
     group.add_argument('--exec', nargs=argparse.REMAINDER, help="Exec remaining input w/ creds injected as env vars")
 
-    group.add_argument('--pretty', action='store_true', help='For --json, pretty-print')
+    parser.add_argument('--pretty', action='store_true', help='For --json, pretty-print')
+
+    parser.add_argument('--version', action='store_true')
 
     args = parser.parse_args()
+
+    if args.version:
+        print(__version__)
+        parser.exit()
 
     if not any([args.format, args.exec]):
         args.format = 'json'
