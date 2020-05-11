@@ -7,9 +7,30 @@ files directly, rather than leveraging botocore's ability to retrieve and
 refresh credentials. So I wrote this to do that.
 
 One downside to this approach is that it doesn't yet work with AWS SSO
-credentials. For that, use aws-sso-credential-process to enable the SDKs
+credentials. For that, use [aws-sso-credential-process](https://github.com/benkehoe/aws-sso-credential-process) to enable the SDKs
 to get credentials AWS SSO. If your tools still don't pick up the
 credentials, you can add this on top, for example with `--exec`.
+
+## Quickstart
+
+I recommend you install [`pipx`](https://pipxproject.github.io/pipx/), which installs the tool in an isolated virtualenv while linking the script you need.
+
+```bash
+# with pipx
+pipx install aws-export-credentials
+
+# without pipx
+python3 -m pip install --user aws-export-credentials
+
+# run it
+aws-export-credentials
+{
+  "Version": 1,
+  "AccessKeyId": "<your access key here>",
+  "SecretAccessKey": "<shhh it's your secret key>",
+  "SessionToken": "<do you ever wonder what's inside the session token?>"
+}
+```
 
 ## Usage
 ### Profile
@@ -26,7 +47,7 @@ spec. If `--pretty` is added, it'll be pretty-printed.
 ### Env vars
 ```
 aws-export-credentials --profile my-profile --env
-eval $(aws-export-credentials --profile my-profile --env-export)
+eval $(aws-export-credentials --profile my-profile --env-export
 ```
 Print the credentials as environment variables. With `--env-export`, the lines are prefixed
 by "`export `", suitable for eval-ing into your shell.
