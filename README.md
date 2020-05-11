@@ -8,7 +8,7 @@ refresh credentials. So I wrote this to do that.
 
 One downside to this approach is that it doesn't yet work with AWS SSO
 credentials. For that, use [aws-sso-credential-process](https://github.com/benkehoe/aws-sso-credential-process) to enable the SDKs
-to get credentials AWS SSO. If your tools still don't pick up the
+to get credentials from AWS SSO. If your tools still don't pick up the
 credentials, you can add this on top, for example with `--exec`.
 
 ## Quickstart
