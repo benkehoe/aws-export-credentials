@@ -6,10 +6,9 @@ inject them into programs, but all the ones I've seen use the CLI's cache
 files directly, rather than leveraging botocore's ability to retrieve and
 refresh credentials. So I wrote this to do that.
 
-One downside to this approach is that it doesn't yet work with AWS SSO
-credentials. For that, use [aws-sso-credential-process](https://github.com/benkehoe/aws-sso-credential-process) to enable the SDKs
-to get credentials from AWS SSO. If your tools still don't pick up the
-credentials, you can add this on top, for example with `--exec`.
+[botocore (the underlying Python SDK library)](https://botocore.amazonaws.com/v1/documentation/api/latest/index.html) has added support for loading credentials cached by [`aws sso login`](https://awscli.amazonaws.com/v2/documentation/api/latest/reference/sso/login.html) as of [version 1.17.0](https://github.com/boto/botocore/blob/develop/CHANGELOG.rst#1170).
+`aws-export-credentials` now requires botocore >= 1.17.0, and so supports AWS SSO credentials as well.
+If all you want is AWS SSO support for an SDK other than Python, take a look at [aws-sso-credential-process](https://github.com/benkehoe/aws-sso-credential-process), which doesn't require the credential injection process that `aws-export-credentials` does.
 
 ## Quickstart
 

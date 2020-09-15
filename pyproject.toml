@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "aws-export-credentials"
-version = "0.1.1"
+version = "0.2.0"
 description = "Get AWS credentials from a profile to inject into other programs"
 authors = ["Ben Kehoe <ben@kehoe.io>"]
 license = "Apache-2.0"
@@ -10,7 +10,7 @@ aws-export-credentials = 'aws_export_credentials:main'
 
 [tool.poetry.dependencies]
 python = ">=3.5"
-botocore = "*"
+botocore = ">=1.17"
 
 [tool.poetry.dev-dependencies]
 

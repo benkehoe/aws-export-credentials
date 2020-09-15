@@ -20,7 +20,7 @@ import subprocess
 
 from botocore.session import Session
 
-__version__ = '0.1.1'
+__version__ = '0.2.0'
 
 DESCRIPTION ="""\
 Get AWS credentials from a profile to inject into other programs.
