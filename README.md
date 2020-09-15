@@ -46,7 +46,7 @@ spec. If `--pretty` is added, it'll be pretty-printed.
 ### Env vars
 ```
 aws-export-credentials --profile my-profile --env
-eval $(aws-export-credentials --profile my-profile --env-export
+eval $(aws-export-credentials --profile my-profile --env-export)
 ```
 Print the credentials as environment variables. With `--env-export`, the lines are prefixed
 by "`export `", suitable for eval-ing into your shell.
