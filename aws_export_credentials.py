@@ -16,11 +16,11 @@ import argparse
 import json
 import textwrap
 import os
-import subprocess
+import shlex
 
 from botocore.session import Session
 
-__version__ = '0.2.0'
+__version__ = '0.3.0'
 
 DESCRIPTION ="""\
 Get AWS credentials from a profile to inject into other programs.
@@ -70,7 +70,8 @@ def main():
         })
         if credentials.token:
             os.environ['AWS_SESSION_TOKEN'] = credentials.token
-        os.system(' '.join(args.exec))
+        command = ' '.join(shlex.quote(arg) for arg in args.exec)
+        os.system(command)
     elif args.format == 'json':
         data = {
             'Version': 1,

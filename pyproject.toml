@@ -1,9 +1,20 @@
 [tool.poetry]
 name = "aws-export-credentials"
-version = "0.2.0"
+version = "0.3.0"
 description = "Get AWS credentials from a profile to inject into other programs"
 authors = ["Ben Kehoe <ben@kehoe.io>"]
 license = "Apache-2.0"
+readme = "README.md"
+homepage = "https://github.com/benkehoe/aws-export-credentials"
+repository = "https://github.com/benkehoe/aws-export-credentials"
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: System Administrators",
+    "License :: OSI Approved :: Apache Software License",
+    "Operating System :: OS Independent",
+    "Topic :: Utilities"
+]
 
 [tool.poetry.scripts]
 aws-export-credentials = 'aws_export_credentials:main'
