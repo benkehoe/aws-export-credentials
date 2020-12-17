@@ -63,4 +63,4 @@ environment variables.
 aws-export-credentials --profile my-profile --credentials-file-profile my-exported-profile
 aws-export-credentials --profile my-profile -c my-exported-profile
 ```
-Put the credentials in the given profile in your shared credentials file, which is typically `~/.aws/credentials` but can be controlled using the environment variable [`AWS_SHARED_CREDENTIALS_FILE`](https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-envvars.html).
+Put the credentials in the given profile in your [shared credentials file](https://ben11kehoe.medium.com/aws-configuration-files-explained-9a7ea7a5b42e), which is typically `~/.aws/credentials` but can be controlled using the environment variable [`AWS_SHARED_CREDENTIALS_FILE`](https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-envvars.html).
