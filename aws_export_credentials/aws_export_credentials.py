@@ -16,17 +16,20 @@ import argparse
 import json
 import textwrap
 import os
+import sys
 import shlex
 
 from botocore.session import Session
 
-__version__ = '0.3.0'
+__version__ = '0.4.0'
 
 DESCRIPTION ="""\
 Get AWS credentials from a profile to inject into other programs.
 
-If you need credentials from AWS SSO, first set up aws-sso-credential-process
-https://github.com/benkehoe/aws-sso-credential-process
+If you need credentials from AWS SSO,
+set up your profiles with aws-sso-util
+
+https://github.com/benkehoe/aws-sso-util
 """
 
 def main():
@@ -41,6 +44,7 @@ def main():
     group.add_argument('--env', action='store_const', const='env', dest='format', help="Print as env vars")
     group.add_argument('--env-export', action='store_const', const='env-export', dest='format', help="Print as env vars prefixed by 'export ' for shell sourcing")
     group.add_argument('--exec', nargs=argparse.REMAINDER, help="Exec remaining input w/ creds injected as env vars")
+    group.add_argument('--credentials-file-profile', '-c', metavar='PROFILE_NAME', help="Write to a profile in AWS credentials file")
 
     parser.add_argument('--pretty', action='store_true', help='For --json, pretty-print')
 
@@ -52,7 +56,7 @@ def main():
         print(__version__)
         parser.exit()
 
-    if not any([args.format, args.exec]):
+    if not any([args.format, args.exec, args.credentials_file_profile]):
         args.format = 'json'
         args.pretty = True
 
@@ -99,6 +103,40 @@ def main():
         if credentials.token:
             lines.append(f'{prefix}AWS_SESSION_TOKEN={credentials.token}')
         print('\n'.join(lines))
+    elif args.credentials_file_profile:
+        values = {
+            'aws_access_key_id': credentials.access_key,
+            'aws_secret_access_key': credentials.secret_key,
+        }
+        if credentials.token:
+            values['aws_session_token'] = credentials.token
+
+        write_values(session, args.credentials_file_profile, values)
+    else:
+        print("ERROR: no option set (this should never happen)", file=sys.stderr)
+        sys.exit(1)
+
+try:
+    from .config_file_writer import write_values
+except ImportError:
+    import configparser
+    def write_values(session, profile_name, values):
+        credentials_file = os.path.expanduser(os.environ.get('AWS_SHARED_CREDENTIALS_FILE') or '~/.aws/credentials')
+
+        parser = configparser.ConfigParser()
+
+        with open(credentials_file, 'r') as fp:
+            parser.read_file(fp)
+
+        if not parser.has_section(profile_name):
+            parser.add_section(profile_name)
+
+        for key, value in values.items():
+            parser.set(profile_name, key, value)
+
+        with open(credentials_file, 'w') as fp:
+            parser.write(fp)
+
 
 if __name__ == '__main__':
     main()
