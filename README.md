@@ -57,3 +57,10 @@ aws-export-credentials --profile my-profile --exec echo 'my access key id is $AW
 ```
 Execute the arguments after `--exec` using `os.system()`, injecting the credentials through
 environment variables.
+
+### `~/.aws/credentials`
+```
+aws-export-credentials --profile my-profile --credentials-file-profile my-exported-profile
+aws-export-credentials --profile my-profile -c my-exported-profile
+```
+Put the credentials in the given profile in your shared credentials file, which is typically `~/.aws/credentials` but can be controlled using the environment variable [`AWS_SHARED_CREDENTIALS_FILE`](https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-envvars.html).
