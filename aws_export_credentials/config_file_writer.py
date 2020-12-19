@@ -56,12 +56,13 @@ def write_values(session, profile_name, values, config_file_writer=None, existin
             credential_file_values,
             shared_credentials_filename)
 
-    config_filename = os.path.expanduser(
-        session.get_config_variable('config_file'))
+    if new_values:
+        config_filename = os.path.expanduser(
+            session.get_config_variable('config_file'))
 
-    section = 'profile {}'.format(process_profile_name(profile_name))
-    new_values['__section__'] = section
-    config_file_writer.update_config(new_values, config_filename, existing_config_action)
+        section = 'profile {}'.format(process_profile_name(profile_name))
+        new_values['__section__'] = section
+        config_file_writer.update_config(new_values, config_filename, existing_config_action)
 
 
 class ConfigFileWriter(object):

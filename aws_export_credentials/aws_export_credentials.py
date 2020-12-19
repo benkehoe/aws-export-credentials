@@ -21,7 +21,7 @@ import shlex
 
 from botocore.session import Session
 
-__version__ = '0.4.0'
+__version__ = '0.5.0'
 
 DESCRIPTION ="""\
 Get AWS credentials from a profile to inject into other programs.
