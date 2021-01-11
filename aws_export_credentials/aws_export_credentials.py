@@ -18,6 +18,8 @@ import textwrap
 import os
 import sys
 import shlex
+import traceback
+import logging
 
 from botocore.session import Session
 
@@ -33,8 +35,6 @@ https://github.com/benkehoe/aws-sso-util
 """
 
 def main():
-
-
     parser = argparse.ArgumentParser(description=DESCRIPTION)
 
     parser.add_argument('--profile', help='The AWS config profile to use')
@@ -49,6 +49,7 @@ def main():
     parser.add_argument('--pretty', action='store_true', help='For --json, pretty-print')
 
     parser.add_argument('--version', action='store_true')
+    parser.add_argument('--debug', action='store_true')
 
     args = parser.parse_args()
 
@@ -60,12 +61,24 @@ def main():
         args.format = 'json'
         args.pretty = True
 
+    if args.debug:
+        logging.basicConfig(level=logging.DEBUG)
+
     for key in ['AWS_ACCESS_KEY_ID', 'AWS_SECRET_ACCESS_KEY', 'AWS_SESSION_TOKEN']:
         os.environ.pop(key, None)
 
-    session = Session(profile=args.profile)
-
-    credentials = session.get_credentials().get_frozen_credentials()
+    try:
+        session = Session(profile=args.profile)
+        credentials = session.get_credentials()
+        if not credentials:
+            print('Unable to locate credentials.', file=sys.stderr)
+            sys.exit(2)
+        credentials = credentials.get_frozen_credentials()
+    except Exception as e:
+        if args.debug:
+            traceback.print_exc()
+        print(str(e), file=sys.stderr)
+        sys.exit(3)
 
     if args.exec:
         os.environ.update({
