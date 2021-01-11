@@ -19,6 +19,7 @@ import os
 import sys
 import shlex
 
+from botocore.exceptions import UnauthorizedSSOTokenError
 from botocore.session import Session
 
 __version__ = '0.5.0'
@@ -31,6 +32,8 @@ set up your profiles with aws-sso-util
 
 https://github.com/benkehoe/aws-sso-util
 """
+
+_except_unauth = 2
 
 def main():
 
@@ -64,8 +67,13 @@ def main():
         os.environ.pop(key, None)
 
     session = Session(profile=args.profile)
+    
+    credentials = None
 
-    credentials = session.get_credentials().get_frozen_credentials()
+    try: 
+        credentials = session.get_credentials().get_frozen_credentials()
+    except UnauthorizedSSOTokenError:
+        sys.exit(_except_unauth)
 
     if args.exec:
         os.environ.update({
