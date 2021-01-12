@@ -8,7 +8,7 @@ refresh credentials. So I wrote this to do that.
 
 [botocore (the underlying Python SDK library)](https://botocore.amazonaws.com/v1/documentation/api/latest/index.html) has added support for loading credentials cached by [`aws sso login`](https://awscli.amazonaws.com/v2/documentation/api/latest/reference/sso/login.html) as of [version 1.17.0](https://github.com/boto/botocore/blob/develop/CHANGELOG.rst#1170).
 `aws-export-credentials` now requires botocore >= 1.17.0, and so supports AWS SSO credentials as well.
-If all you want is AWS SSO support for an SDK other than Python, take a look at [aws-sso-credential-process](https://github.com/benkehoe/aws-sso-credential-process), which doesn't require the credential injection process that `aws-export-credentials` does.
+If all you want is AWS SSO support for an SDK other than Python, take a look at [aws-sso-util](https://github.com/benkehoe/aws-sso-util#adding-aws-sso-support-to-aws-sdks), which can help you configure your profiles with a [credential process](https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-sourcing-external.html) that doesn't require the credential injection process that `aws-export-credentials` does.
 
 ## Quickstart
 
