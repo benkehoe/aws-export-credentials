@@ -27,7 +27,7 @@ import stat
 from botocore.session import Session
 from botocore.credentials import ReadOnlyCredentials
 
-__version__ = '0.7.0'
+__version__ = '0.8.0'
 
 LOGGER = logging.getLogger('aws-export-credentials')
 
@@ -93,9 +93,7 @@ def main():
     credentials = None
 
     if args.cache_file and not args.refresh:
-        data = load_cache(args.cache_file, args.cache_expiration_buffer)
-        if data:
-            credentials = Credentials(**data)
+        credentials = load_cache(args.cache_file, args.cache_expiration_buffer)
 
     if credentials and args.credentials_file_profile:
         session = Session(profile=args.profile)
@@ -106,7 +104,12 @@ def main():
             if not session_credentials:
                 print('Unable to locate credentials.', file=sys.stderr)
                 sys.exit(2)
-            expiration = session_credentials._expiry_time if hasattr(session_credentials, '_expiry_time') else None
+            expiration = None
+            if hasattr(session_credentials, '_expiry_time'):
+                if isinstance(session_credentials._expiry_time, datetime):
+                    expiration = session_credentials._expiry_time
+                else:
+                    LOGGER.debug("Expiration in session credentials is of type {}, not datetime".format(type(expiration)))
             read_only_credentials = session_credentials.get_frozen_credentials()
             credentials = convert_creds(read_only_credentials, expiration)
 
@@ -208,6 +211,7 @@ def load_cache(file_path, expiration_buffer):
     try:
         now = datetime.now(tz=timezone.utc)
         if expiration - expiration_buffer < now:
+            LOGGER.debug('Cache is expired')
             return None
     except Exception as e:
         LOGGER.debug('Failed checking expiration: {}'.format(e))
@@ -221,7 +225,7 @@ def load_cache(file_path, expiration_buffer):
             LOGGER.debug("Field {} missing from cache".format(field))
             return None
 
-    return data
+    return Credentials(**sanitized_data)
 
 def save_cache(file_path, credentials):
     if not credentials.Expiration:
