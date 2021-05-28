@@ -27,7 +27,7 @@ import stat
 from botocore.session import Session
 from botocore.credentials import ReadOnlyCredentials
 
-__version__ = '0.6.0'
+__version__ = '0.7.0'
 
 LOGGER = logging.getLogger('aws-export-credentials')
 
@@ -85,6 +85,10 @@ def main():
 
     for key in ['AWS_ACCESS_KEY_ID', 'AWS_SECRET_ACCESS_KEY', 'AWS_SESSION_TOKEN']:
         os.environ.pop(key, None)
+
+    # if args.profile:
+    #     for key in ['AWS_PROFILE', 'AWS_DEFAULT_PROFILE']:
+    #         os.environ.pop(key, None)
 
     credentials = None
 
@@ -197,28 +201,44 @@ def load_cache(file_path, expiration_buffer):
     try:
         expiration = datetime.strptime(expiration_str, TIME_FORMAT).replace(tzinfo=timezone.utc)
         data['Expiration'] = expiration
-    except:
-        LOGGER.debug('Could not parse expiration: {}'.format(expiration_str))
+    except Exception as e:
+        LOGGER.debug('Could not parse expiration {}: {}'.format(expiration_str, e))
         return None
 
-    now = datetime.now(tz=timezone.utc)
-    if expiration - expiration_buffer < now:
+    try:
+        now = datetime.now(tz=timezone.utc)
+        if expiration - expiration_buffer < now:
+            return None
+    except Exception as e:
+        LOGGER.debug('Failed checking expiration: {}'.format(e))
         return None
+
+    sanitized_data = {}
+    for field in Credentials._fields:
+        if field in data:
+            sanitized_data[field] = data[field]
+        else:
+            LOGGER.debug("Field {} missing from cache".format(field))
+            return None
+
     return data
 
 def save_cache(file_path, credentials):
-    cache_data = {
-        'ProviderType': 'aws-export-credentials',
-        'Credentials': credentials._asdict()
-    }
-    cache_data['Credentials']['Expiration'] = credentials.Expiration.strftime(TIME_FORMAT)
+    if not credentials.Expiration:
+        LOGGER.debug("Not caching credentials, no expiration")
+        return
     try:
+        cache_data = {
+            'ProviderType': 'aws-export-credentials',
+            'Credentials': credentials._asdict()
+        }
+        cache_data['Credentials']['Expiration'] = credentials.Expiration.strftime(TIME_FORMAT)
         with open(file_path, 'w') as fp:
             json.dump(cache_data, fp)
-            try:
-                os.chmod(file_path, 0o600)
-            except Exception as e:
-                LOGGER.debug('Failed to set cache file mode: {}'.format(e))
+        try:
+            os.chmod(file_path, 0o600)
+        except Exception as e:
+            LOGGER.debug('Failed to set cache file mode: {}'.format(e))
         LOGGER.debug('Saved cache to {}: {}'.format(file_path, json.dumps(cache_data)))
     except Exception as e:
         LOGGER.debug('Cache saving failed: {}'.format(e))
