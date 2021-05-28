@@ -20,10 +20,16 @@ import sys
 import shlex
 import traceback
 import logging
+from datetime import datetime, timezone, timedelta
+from collections import namedtuple
+import stat
 
 from botocore.session import Session
+from botocore.credentials import ReadOnlyCredentials
 
-__version__ = '0.5.0'
+__version__ = '0.6.0'
+
+LOGGER = logging.getLogger('aws-export-credentials')
 
 DESCRIPTION ="""\
 Get AWS credentials from a profile to inject into other programs.
@@ -33,6 +39,12 @@ set up your profiles with aws-sso-util
 
 https://github.com/benkehoe/aws-sso-util
 """
+
+TIME_FORMAT = '%Y-%m-%dT%H:%M:%SZ'
+
+Credentials = namedtuple('Credentials', ['AccessKeyId', 'SecretAccessKey', 'SessionToken', 'Expiration'])
+def convert_creds(read_only_creds, expiration=None):
+    return Credentials(*list(read_only_creds) + [expiration])
 
 def main():
     parser = argparse.ArgumentParser(description=DESCRIPTION)
@@ -51,6 +63,13 @@ def main():
     parser.add_argument('--version', action='store_true')
     parser.add_argument('--debug', action='store_true')
 
+    cache_group = parser.add_argument_group('Caching')
+    cache_group.add_argument('--cache-file')
+    buffer_type = lambda v: timedelta(minutes=int(v))
+    buffer_default = timedelta(minutes=10)
+    cache_group.add_argument('--cache-expiration-buffer', type=buffer_type, default=buffer_default, metavar='MINUTES', help='Expiration buffer in minutes, defaults to 10 minutes')
+    cache_group.add_argument('--refresh', action='store_true', help='Refresh the cache')
+
     args = parser.parse_args()
 
     if args.version:
@@ -67,36 +86,57 @@ def main():
     for key in ['AWS_ACCESS_KEY_ID', 'AWS_SECRET_ACCESS_KEY', 'AWS_SESSION_TOKEN']:
         os.environ.pop(key, None)
 
-    try:
+    credentials = None
+
+    if args.cache_file and not args.refresh:
+        data = load_cache(args.cache_file, args.cache_expiration_buffer)
+        if data:
+            credentials = Credentials(**data)
+
+    if credentials and args.credentials_file_profile:
         session = Session(profile=args.profile)
-        credentials = session.get_credentials()
-        if not credentials:
-            print('Unable to locate credentials.', file=sys.stderr)
-            sys.exit(2)
-        credentials = credentials.get_frozen_credentials()
-    except Exception as e:
-        if args.debug:
-            traceback.print_exc()
-        print(str(e), file=sys.stderr)
-        sys.exit(3)
+    elif not credentials:
+        try:
+            session = Session(profile=args.profile)
+            session_credentials = session.get_credentials()
+            if not session_credentials:
+                print('Unable to locate credentials.', file=sys.stderr)
+                sys.exit(2)
+            expiration = session_credentials._expiry_time if hasattr(session_credentials, '_expiry_time') else None
+            read_only_credentials = session_credentials.get_frozen_credentials()
+            credentials = convert_creds(read_only_credentials, expiration)
+
+            if args.cache_file:
+                save_cache(args.cache_file, credentials)
+        except Exception as e:
+            if args.debug:
+                traceback.print_exc()
+            print(str(e), file=sys.stderr)
+            sys.exit(3)
+
+
 
     if args.exec:
         os.environ.update({
-            'AWS_ACCESS_KEY_ID': credentials.access_key,
-            'AWS_SECRET_ACCESS_KEY': credentials.secret_key,
+            'AWS_ACCESS_KEY_ID': credentials.AccessKeyId,
+            'AWS_SECRET_ACCESS_KEY': credentials.SecretAccessKey,
         })
-        if credentials.token:
-            os.environ['AWS_SESSION_TOKEN'] = credentials.token
+        if credentials.SessionToken:
+            os.environ['AWS_SESSION_TOKEN'] = credentials.SessionToken
+        if credentials.Expiration:
+            os.environ['AWS_CREDENTIALS_EXPIRATION'] = credentials.Expiration.strftime(TIME_FORMAT)
         command = ' '.join(shlex.quote(arg) for arg in args.exec)
         os.system(command)
     elif args.format == 'json':
         data = {
             'Version': 1,
-            'AccessKeyId': credentials.access_key,
-            'SecretAccessKey': credentials.secret_key,
+            'AccessKeyId': credentials.AccessKeyId,
+            'SecretAccessKey': credentials.SecretAccessKey,
         }
-        if credentials.token:
-            data['SessionToken'] = credentials.token
+        if credentials.SessionToken:
+            data['SessionToken'] = credentials.SessionToken
+        if credentials.Expiration:
+            data['Expiration'] = credentials.Expiration.strftime(TIME_FORMAT)
 
         if args.pretty:
             json_kwargs={'indent': 2}
@@ -110,24 +150,78 @@ def main():
         else:
             prefix = ''
         lines = [
-            f'{prefix}AWS_ACCESS_KEY_ID={credentials.access_key}',
-            f'{prefix}AWS_SECRET_ACCESS_KEY={credentials.secret_key}',
+            '{}AWS_ACCESS_KEY_ID={}'.format(prefix, credentials.AccessKeyId),
+            '{}AWS_SECRET_ACCESS_KEY={}'.format(prefix, credentials.SecretAccessKey),
         ]
-        if credentials.token:
-            lines.append(f'{prefix}AWS_SESSION_TOKEN={credentials.token}')
+        if credentials.SessionToken:
+            lines.append('{}AWS_SESSION_TOKEN={}'.format(prefix, credentials.SessionToken))
+        if credentials.Expiration:
+            lines.append('{}AWS_CREDENTIALS_EXPIRATION={}'.format(prefix, credentials.Expiration.strftime(TIME_FORMAT)))
         print('\n'.join(lines))
     elif args.credentials_file_profile:
         values = {
-            'aws_access_key_id': credentials.access_key,
-            'aws_secret_access_key': credentials.secret_key,
+            'aws_access_key_id': credentials.AccessKeyId,
+            'aws_secret_access_key': credentials.SecretAccessKey,
         }
-        if credentials.token:
-            values['aws_session_token'] = credentials.token
+        if credentials.SessionToken:
+            values['aws_session_token'] = credentials.SessionToken
+        if credentials.Expiration:
+            values['aws_credentials_expiration'] = credentials.Expiration.strftime(TIME_FORMAT)
 
         write_values(session, args.credentials_file_profile, values)
     else:
         print("ERROR: no option set (this should never happen)", file=sys.stderr)
         sys.exit(1)
+
+def load_cache(file_path, expiration_buffer):
+    try:
+        with open(file_path, 'r') as fp:
+            data = json.load(fp)
+        LOGGER.debug('Loaded cache from {}: {}'.format(file_path, json.dumps(data)))
+    except Exception as e:
+        LOGGER.debug('Failed to load cache from {}'.format(file_path))
+        return None
+
+    try:
+        data = data['Credentials']
+    except:
+        LOGGER.debug('Did not find credentials in cache')
+        return None
+
+    try:
+        expiration_str = data['Expiration']
+    except:
+        LOGGER.debug('Did not find expiration in cache')
+        return None
+
+    try:
+        expiration = datetime.strptime(expiration_str, TIME_FORMAT).replace(tzinfo=timezone.utc)
+        data['Expiration'] = expiration
+    except:
+        LOGGER.debug('Could not parse expiration: {}'.format(expiration_str))
+        return None
+
+    now = datetime.now(tz=timezone.utc)
+    if expiration - expiration_buffer < now:
+        return None
+    return data
+
+def save_cache(file_path, credentials):
+    cache_data = {
+        'ProviderType': 'aws-export-credentials',
+        'Credentials': credentials._asdict()
+    }
+    cache_data['Credentials']['Expiration'] = credentials.Expiration.strftime(TIME_FORMAT)
+    try:
+        with open(file_path, 'w') as fp:
+            json.dump(cache_data, fp)
+            try:
+                os.chmod(file_path, 0o600)
+            except Exception as e:
+                LOGGER.debug('Failed to set cache file mode: {}'.format(e))
+        LOGGER.debug('Saved cache to {}: {}'.format(file_path, json.dumps(cache_data)))
+    except Exception as e:
+        LOGGER.debug('Cache saving failed: {}'.format(e))
 
 try:
     from .config_file_writer import write_values
@@ -138,8 +232,11 @@ except ImportError:
 
         parser = configparser.ConfigParser()
 
-        with open(credentials_file, 'r') as fp:
-            parser.read_file(fp)
+        try:
+            with open(credentials_file, 'r') as fp:
+                parser.read_file(fp)
+        except FileNotFoundError:
+            pass
 
         if not parser.has_section(profile_name):
             parser.add_section(profile_name)

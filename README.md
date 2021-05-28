@@ -65,3 +65,15 @@ aws-export-credentials --profile my-profile --credentials-file-profile my-export
 aws-export-credentials --profile my-profile -c my-exported-profile
 ```
 Put the credentials in the given profile in your [shared credentials file](https://ben11kehoe.medium.com/aws-configuration-files-explained-9a7ea7a5b42e), which is typically `~/.aws/credentials` but can be controlled using the environment variable [`AWS_SHARED_CREDENTIALS_FILE`](https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-envvars.html).
+
+## Caching
+To avoid retrieving credentials every time when using `aws-export-credentials` with the same identity, you can cache the credentials in a file using the `--cache-file` argument.
+**Note `aws-export-credentials` does not distinguish between different identities in the cache. Different identities should use different cache files.**
+
+Cache loading and saving fails silently, to ensure caching does not interrupt usage.
+If caching is not working, you can see the details with `--debug`.
+
+By default, cached credentials are considered expired if their expiration is less than 10 minutes in the future.
+You can change this value using the `--cache-expiration-buffer` argument, which takes a number of minutes.
+
+You can force the cache to refresh using `--refresh`.
