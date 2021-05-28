@@ -68,9 +68,9 @@ Put the credentials in the given profile in your [shared credentials file](https
 
 ## Caching
 To avoid retrieving credentials every time when using `aws-export-credentials` with the same identity, you can cache the credentials in a file using the `--cache-file` argument.
-**Note `aws-export-credentials` does not distinguish between different identities in the cache. Different identities should use different cache files.**
+**Note `aws-export-credentials` does not distinguish in the cache between different identities. Different identities should use different cache files.**
 If you do not account for this, credentials may be loaded from the cache and exported that do not correspond to the credentials that would be exported without the cache.
-This may look like, for example, using a cache file named after the config profile you are exporting.
+An example of a way to address this would be using a cache file named after the config profile you are exporting.
 
 Cache loading and saving fails silently, to ensure caching does not interrupt usage.
 If caching is not working, you can see the details with `--debug`.
