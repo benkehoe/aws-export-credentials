@@ -27,7 +27,7 @@ import stat
 from botocore.session import Session
 from botocore.credentials import ReadOnlyCredentials
 
-__version__ = '0.8.0'
+__version__ = '0.9.0'
 
 LOGGER = logging.getLogger('aws-export-credentials')
 
@@ -104,13 +104,13 @@ def main():
             if not session_credentials:
                 print('Unable to locate credentials.', file=sys.stderr)
                 sys.exit(2)
+            read_only_credentials = session_credentials.get_frozen_credentials()
             expiration = None
-            if hasattr(session_credentials, '_expiry_time'):
+            if hasattr(session_credentials, '_expiry_time') and session_credentials._expiry_time:
                 if isinstance(session_credentials._expiry_time, datetime):
                     expiration = session_credentials._expiry_time
                 else:
                     LOGGER.debug("Expiration in session credentials is of type {}, not datetime".format(type(expiration)))
-            read_only_credentials = session_credentials.get_frozen_credentials()
             credentials = convert_creds(read_only_credentials, expiration)
 
             if args.cache_file:
