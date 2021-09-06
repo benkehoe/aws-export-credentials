@@ -79,3 +79,24 @@ By default, cached credentials are considered expired if their expiration is les
 You can change this value using the `--cache-expiration-buffer` argument, which takes a number of minutes.
 
 You can force the cache to refresh using `--refresh`.
+
+# Role assumption
+In general, it's better to do role assumption by using profiles in `~/.aws/config` like this:
+
+```ini
+[profile my-assumed-role]
+role_arn = arn:aws:iam::123456789012:role/MyRole
+# optional: role_session_name = MyRoleSessionName
+
+source_profile = profile-to-call-assume-role-with
+# or:
+# credential_source = Environment
+# credential_source = Ec2InstanceMetadata
+# credential_source = EcsContainer
+```
+
+You can use `my-assumed-role` like any other profile.
+It uses the AWS SDKs' built-in support for role assumption, rather than relying on third party code.
+It also gets you credential refreshing from the SDKs, where getting the credentials in the manner below cannot refresh them when they expire.
+
+But if you absolutely must have ad hoc role assumption on the command line, you can accomplish that through [aws-assume-role-lib](https://github.com/benkehoe/aws-assume-role-lib#command-line-use).
