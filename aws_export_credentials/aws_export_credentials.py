@@ -22,6 +22,9 @@ import traceback
 import logging
 from datetime import datetime, timezone, timedelta
 from collections import namedtuple
+from http.server import HTTPServer, BaseHTTPRequestHandler
+from http import HTTPStatus
+import functools
 import stat
 
 from botocore.session import Session
@@ -46,6 +49,32 @@ Credentials = namedtuple('Credentials', ['AccessKeyId', 'SecretAccessKey', 'Sess
 def convert_creds(read_only_creds, expiration=None):
     return Credentials(*list(read_only_creds) + [expiration])
 
+def parse_container_arg(value):
+    token = value[1]
+    host_post = value[0].rsplit(':', 1)
+    if len(host_post) == 1:
+        host = ''
+        port = int(host_post[0])
+    else:
+        host = host_post[0]
+        port = int(host_post[1])
+    return (host, port), token
+
+def get_credentials(session):
+    session_credentials = session.get_credentials()
+    if not session_credentials:
+        return None
+
+    read_only_credentials = session_credentials.get_frozen_credentials()
+    expiration = None
+    if hasattr(session_credentials, '_expiry_time') and session_credentials._expiry_time:
+        if isinstance(session_credentials._expiry_time, datetime):
+            expiration = session_credentials._expiry_time
+        else:
+            LOGGER.debug("Expiration in session credentials is of type {}, not datetime".format(type(expiration)))
+    credentials = convert_creds(read_only_credentials, expiration)
+    return credentials
+
 def main():
     parser = argparse.ArgumentParser(description=DESCRIPTION)
 
@@ -57,6 +86,7 @@ def main():
     group.add_argument('--env-export', action='store_const', const='env-export', dest='format', help="Print as env vars prefixed by 'export ' for shell sourcing")
     group.add_argument('--exec', nargs=argparse.REMAINDER, help="Exec remaining input w/ creds injected as env vars")
     group.add_argument('--credentials-file-profile', '-c', metavar='PROFILE_NAME', help="Write to a profile in AWS credentials file")
+    group.add_argument('--container', nargs=2, metavar=('HOST_PORT', 'TOKEN'), help="Start a server on [HOST:]PORT for use with containers, requires TOKEN for auth")
 
     parser.add_argument('--pretty', action='store_true', help='For --json, pretty-print')
 
@@ -76,12 +106,20 @@ def main():
         print(__version__)
         parser.exit()
 
-    if not any([args.format, args.exec, args.credentials_file_profile]):
+    if not any([args.format, args.exec, args.credentials_file_profile, args.container]):
         args.format = 'json'
         args.pretty = True
 
     if args.debug:
         logging.basicConfig(level=logging.DEBUG)
+
+    if args.container:
+        try:
+            args.container = parse_container_arg(args.container)
+        except Exception:
+            parser.error("invalid value for --container")
+        if args.cache_file:
+            parser.error("cannot use --cache-file with --container")
 
     for key in ['AWS_ACCESS_KEY_ID', 'AWS_SECRET_ACCESS_KEY', 'AWS_SESSION_TOKEN']:
         os.environ.pop(key, None)
@@ -100,18 +138,12 @@ def main():
     elif not credentials:
         try:
             session = Session(profile=args.profile)
-            session_credentials = session.get_credentials()
-            if not session_credentials:
+
+            credentials = get_credentials(session)
+
+            if not credentials:
                 print('Unable to locate credentials.', file=sys.stderr)
                 sys.exit(2)
-            read_only_credentials = session_credentials.get_frozen_credentials()
-            expiration = None
-            if hasattr(session_credentials, '_expiry_time') and session_credentials._expiry_time:
-                if isinstance(session_credentials._expiry_time, datetime):
-                    expiration = session_credentials._expiry_time
-                else:
-                    LOGGER.debug("Expiration in session credentials is of type {}, not datetime".format(type(expiration)))
-            credentials = convert_creds(read_only_credentials, expiration)
 
             if args.cache_file:
                 save_cache(args.cache_file, credentials)
@@ -120,8 +152,6 @@ def main():
                 traceback.print_exc()
             print(str(e), file=sys.stderr)
             sys.exit(3)
-
-
 
     if args.exec:
         os.environ.update({
@@ -176,6 +206,17 @@ def main():
             values['aws_credentials_expiration'] = credentials.Expiration.strftime(TIME_FORMAT)
 
         write_values(session, args.credentials_file_profile, values)
+    elif args.container:
+        server_address, token = args.container
+        handler_class = functools.partial(ContainerRequestHandler,
+            token=token,
+            session=session,
+        )
+        server = HTTPServer(server_address, handler_class)
+        try:
+            server.serve_forever()
+        except KeyboardInterrupt:
+            pass
     else:
         print("ERROR: no option set (this should never happen)", file=sys.stderr)
         sys.exit(1)
@@ -271,6 +312,47 @@ except ImportError:
         with open(credentials_file, 'w') as fp:
             parser.write(fp)
 
+class ContainerRequestHandler(BaseHTTPRequestHandler):
+    # error_message_format = json.dumps({"Error": {"Code": "InvalidRequest", "Message": "%(message)"}})
+    # error_content_type = "application/json"
+
+    def __init__(self, request, client_address, server, token, session):
+        self._token = token
+        self._session = session
+        super().__init__(request, client_address, server)
+
+    def do_GET(self):
+        if self.path.startswith('/role/') or self.path.startswith('/role-arn/'):
+            self.send_response(HTTPStatus.NOT_FOUND)
+            body = {"Error": {"Code": "NotImplemented", "Message": "Role assumption is not supported"}}
+        if self.path not in ['/', '/creds']:
+            self.send_response(HTTPStatus.NOT_FOUND)
+            body = {"Error": {"Code": "InvalidPath", "Message": "Only the base path is accepted"}}
+        if 'Authorization' not in self.headers:
+            self.send_response(HTTPStatus.UNAUTHORIZED)
+            body = {"Error": {"Code": "NoAuthorizationHeader", "Message": "Authorization header not provided"}}
+        elif self.headers['Authorization'] != self._token:
+            self.send_response(HTTPStatus.UNAUTHORIZED)
+            body = {"Error": {"Code": "InvalidToken", "Message": "The provided token was invalid"}}
+        else:
+            self.send_response(HTTPStatus.OK)
+            credentials = get_credentials(self._session)
+            body = {
+                'AccessKeyId': credentials.AccessKeyId,
+                'SecretAccessKey': credentials.SecretAccessKey,
+            }
+            if credentials.SessionToken:
+                body['Token'] = credentials.SessionToken
+            if credentials.Expiration:
+                body['Expiration'] = credentials.Expiration.strftime(TIME_FORMAT)
+
+        body_bytes = json.dumps(body).encode('utf-8')
+
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", len(body_bytes))
+        self.end_headers()
+
+        self.wfile.write(body_bytes)
 
 if __name__ == '__main__':
     main()
