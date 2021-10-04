@@ -66,6 +66,27 @@ aws-export-credentials --profile my-profile -c my-exported-profile
 ```
 Put the credentials in the given profile in your [shared credentials file](https://ben11kehoe.medium.com/aws-configuration-files-explained-9a7ea7a5b42e), which is typically `~/.aws/credentials` but can be controlled using the environment variable [`AWS_SHARED_CREDENTIALS_FILE`](https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-envvars.html).
 
+### Containers
+> :warning: This method of providing refreshable credentials only works on Linux using `--network host`. [On Mac](https://docs.docker.com/desktop/mac/networking/#use-cases-and-workarounds) and [Windows](https://docs.docker.com/desktop/windows/networking/#use-cases-and-workarounds), `--network host` doesn't work. On all three, the host cannot be referenced as `localhost`, only `host.docker.internal`, which is not an allowed host the AWS SDKs. Alternatives include mounting your `~/.aws` directory or using the environment variables from `--env`.
+
+You can use `--container` to start a server, compliant with the ECS metadata server, that exports your credentials, suitable for use with containers.
+
+You provide `--container` a port (you can optionally provide the host part as well) and an authorization token.
+On your container, map the port from the server, set the `AWS_CONTAINER_CREDENTIALS_FULL_URI` environment variable to the URL as accessed inside the container, and set the `AWS_CONTAINER_AUTHORIZATION_TOKEN` environment variable to the same value you provided the server.
+
+You can use any value for the authorization, but it's best use a random value.
+
+```
+# Generate token. For example, on Linux:
+AWS_CONTAINER_AUTHORIZATION_TOKEN=$(/proc/sys/kernel/random/uuid)
+
+# start the server in the background
+aws-export-credentials --profile my-profile --container 8081 $AWS_CONTAINER_AUTHORIZATION_TOKEN &
+
+# run your container
+docker run --network host -e AWS_CONTAINER_CREDENTIALS_FULL_URI=http://localhost:8081 -e AWS_CONTAINER_AUTHORIZATION_TOKEN=$AWS_CONTAINER_AUTHORIZATION_TOKEN amazon/aws-cli sts get-caller-identity
+```
+
 ## Caching
 To avoid retrieving credentials every time when using `aws-export-credentials` with the same identity, you can cache the credentials in a file using the `--cache-file` argument.
 **Note `aws-export-credentials` does not distinguish in the cache between different identities. Different identities should use different cache files.**
@@ -105,5 +126,7 @@ source_profile = profile-to-call-assume-role-with
 You can then use `my-assumed-role` like any other profile.
 It uses the AWS SDKs' built-in support for role assumption, rather than relying on third party code.
 It also gets you credential refreshing from the SDKs, where getting the credentials in the manner below cannot refresh them when they expire.
+
+You can then, if needed, export the assumed role credentials with `aws-export-credentials --profile my-assumed-role`.
 
 But if you absolutely must have ad hoc role assumption on the command line, you can accomplish that through [`aws-assume-role-lib`](https://github.com/benkehoe/aws-assume-role-lib#command-line-use).
