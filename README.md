@@ -67,7 +67,7 @@ aws-export-credentials --profile my-profile -c my-exported-profile
 Put the credentials in the given profile in your [shared credentials file](https://ben11kehoe.medium.com/aws-configuration-files-explained-9a7ea7a5b42e), which is typically `~/.aws/credentials` but can be controlled using the environment variable [`AWS_SHARED_CREDENTIALS_FILE`](https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-envvars.html).
 
 ### Containers
-> :warning: This method of providing refreshable credentials only works on Linux using `--network host`. [On Mac](https://docs.docker.com/desktop/mac/networking/#use-cases-and-workarounds) and [Windows](https://docs.docker.com/desktop/windows/networking/#use-cases-and-workarounds), `--network host` doesn't work. On all three, the host cannot be referenced as `localhost`, only `host.docker.internal`, which is not an allowed host the AWS SDKs. Alternatives include mounting your `~/.aws` directory or using the environment variables from `--env`.
+> :warning: This method of providing refreshable credentials only works on Linux using `--network host`. [On Mac](https://docs.docker.com/desktop/mac/networking/#use-cases-and-workarounds) and [Windows](https://docs.docker.com/desktop/windows/networking/#use-cases-and-workarounds), `--network host` doesn't work. On all three, without `--network host` the host cannot be referenced as `localhost`, only as `host.docker.internal`, which is not an allowed host the AWS SDKs. Alternatives include mounting your `~/.aws` directory or using the environment variables from `--env`.
 
 You can use `--container` to start a server, compliant with the ECS metadata server, that exports your credentials, suitable for use with containers.
 
