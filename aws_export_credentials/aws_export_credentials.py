@@ -16,6 +16,7 @@ import argparse
 import json
 import textwrap
 import os
+import os.path
 import sys
 import shlex
 import traceback
@@ -278,6 +279,7 @@ def save_cache(file_path, credentials):
             'Credentials': credentials._asdict()
         }
         cache_data['Credentials']['Expiration'] = credentials.Expiration.strftime(TIME_FORMAT)
+        os.makedirs(os.path.dirname(file_path), exist_ok=True)
         with open(file_path, 'w') as fp:
             json.dump(cache_data, fp)
         try:
