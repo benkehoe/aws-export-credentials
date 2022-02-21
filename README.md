@@ -31,6 +31,8 @@ aws-export-credentials
 }
 ```
 
+You can also download the Python file directly [here](https://raw.githubusercontent.com/benkehoe/aws-export-credentials/stable/aws_export_credentials/aws_export_credentials.py).
+
 ## Usage
 ### Profile
 Profiles work like in the AWS CLI (since it uses botocore); it will pick up the `AWS_PROFILE`
