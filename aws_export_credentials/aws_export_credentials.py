@@ -155,6 +155,9 @@ def main():
             sys.exit(3)
 
     if args.exec:
+        for key in ['AWS_PROFILE', 'AWS_DEFAULT_PROFILE']:
+            os.environ.pop(key, None)
+
         os.environ.update({
             'AWS_ACCESS_KEY_ID': credentials.AccessKeyId,
             'AWS_SECRET_ACCESS_KEY': credentials.SecretAccessKey,
@@ -163,6 +166,11 @@ def main():
             os.environ['AWS_SESSION_TOKEN'] = credentials.SessionToken
         if credentials.Expiration:
             os.environ['AWS_CREDENTIALS_EXPIRATION'] = credentials.Expiration.strftime(TIME_FORMAT)
+
+        region_name = session.get_config_variable('region')
+        if region_name:
+            os.environ['AWS_DEFAULT_REGION'] = region_name
+
         command = ' '.join(shlex.quote(arg) for arg in args.exec)
         os.system(command)
     elif args.format == 'json':
