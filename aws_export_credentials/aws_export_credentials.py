@@ -14,7 +14,6 @@
 
 import argparse
 import json
-import textwrap
 import os
 import os.path
 import sys
@@ -26,7 +25,7 @@ from collections import namedtuple
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from http import HTTPStatus
 import functools
-import stat
+import secrets
 
 from botocore.session import Session
 from botocore.credentials import ReadOnlyCredentials
@@ -61,6 +60,22 @@ def parse_container_arg(value):
         port = int(host_post[1])
     return (host, port), token
 
+def parse_imds_arg(value):
+    host_post = value.rsplit(':', 1)
+    if len(host_post) == 1:
+        host = ''
+        port = int(host_post[0])
+    else:
+        host = host_post[0]
+        port = int(host_post[1])
+    return host, port
+
+def serialize_date(dt):
+    return dt.strftime(TIME_FORMAT)
+
+def deserialize_date(dt_str):
+    return datetime.strptime(dt_str, TIME_FORMAT).replace(tzinfo=timezone.utc)
+
 def get_credentials(session):
     session_credentials = session.get_credentials()
     if not session_credentials:
@@ -87,7 +102,8 @@ def main():
     group.add_argument('--env-export', action='store_const', const='env-export', dest='format', help="Print as env vars prefixed by 'export ' for shell sourcing")
     group.add_argument('--exec', nargs=argparse.REMAINDER, help="Exec remaining input w/ creds injected as env vars")
     group.add_argument('--credentials-file-profile', '-c', metavar='PROFILE_NAME', help="Write to a profile in AWS credentials file")
-    group.add_argument('--container', nargs=2, metavar=('HOST_PORT', 'TOKEN'), help="Start a server on [HOST:]PORT for use with containers, requires TOKEN for auth")
+    group.add_argument('--container', nargs=2, metavar=('HOST_PORT', 'TOKEN'), help="Start an ECS-compatible server on [HOST:]PORT, requires TOKEN for auth")
+    group.add_argument('--imds', metavar='HOST_PORT', help="Start an IMDSv2 server on [HOST:]PORT")
 
     parser.add_argument('--pretty', action='store_true', help='For --json, pretty-print')
 
@@ -107,7 +123,7 @@ def main():
         print(__version__)
         parser.exit()
 
-    if not any([args.format, args.exec, args.credentials_file_profile, args.container]):
+    if not any([args.format, args.exec, args.credentials_file_profile, args.container, args.imds]):
         args.format = 'json'
         args.pretty = True
 
@@ -121,6 +137,13 @@ def main():
             parser.error("invalid value for --container")
         if args.cache_file:
             parser.error("cannot use --cache-file with --container")
+    if args.imds:
+        try:
+            args.imds = parse_imds_arg(args.imds)
+        except Exception:
+            parser.error("invalid value for --imds")
+        if args.cache_file:
+            parser.error("cannot use --cache-file with --imds")
 
     for key in ['AWS_ACCESS_KEY_ID', 'AWS_SECRET_ACCESS_KEY', 'AWS_SESSION_TOKEN']:
         os.environ.pop(key, None)
@@ -165,7 +188,7 @@ def main():
         if credentials.SessionToken:
             os.environ['AWS_SESSION_TOKEN'] = credentials.SessionToken
         if credentials.Expiration:
-            os.environ['AWS_CREDENTIALS_EXPIRATION'] = credentials.Expiration.strftime(TIME_FORMAT)
+            os.environ['AWS_CREDENTIALS_EXPIRATION'] = serialize_date(credentials.Expiration)
 
         region_name = session.get_config_variable('region')
         if region_name:
@@ -182,7 +205,7 @@ def main():
         if credentials.SessionToken:
             data['SessionToken'] = credentials.SessionToken
         if credentials.Expiration:
-            data['Expiration'] = credentials.Expiration.strftime(TIME_FORMAT)
+            data['Expiration'] = serialize_date(credentials.Expiration)
 
         if args.pretty:
             json_kwargs={'indent': 2}
@@ -202,7 +225,7 @@ def main():
         if credentials.SessionToken:
             lines.append('{}AWS_SESSION_TOKEN={}'.format(prefix, credentials.SessionToken))
         if credentials.Expiration:
-            lines.append('{}AWS_CREDENTIALS_EXPIRATION={}'.format(prefix, credentials.Expiration.strftime(TIME_FORMAT)))
+            lines.append('{}AWS_CREDENTIALS_EXPIRATION={}'.format(prefix, serialize_date(credentials.Expiration)))
         print('\n'.join(lines))
     elif args.credentials_file_profile:
         values = {
@@ -212,12 +235,24 @@ def main():
         if credentials.SessionToken:
             values['aws_session_token'] = credentials.SessionToken
         if credentials.Expiration:
-            values['aws_credentials_expiration'] = credentials.Expiration.strftime(TIME_FORMAT)
+            values['aws_credentials_expiration'] = serialize_date(credentials.Expiration)
 
         write_values(session, args.credentials_file_profile, values)
     elif args.container:
         server_address, token = args.container
         handler_class = functools.partial(ContainerRequestHandler,
+            token=token,
+            session=session,
+        )
+        server = HTTPServer(server_address, handler_class)
+        try:
+            server.serve_forever()
+        except KeyboardInterrupt:
+            pass
+    elif args.imds:
+        server_address = args.imds
+        token = secrets.token_urlsafe()
+        handler_class = functools.partial(IMDSRequestHandler,
             token=token,
             session=session,
         )
@@ -252,7 +287,7 @@ def load_cache(file_path, expiration_buffer):
         return None
 
     try:
-        expiration = datetime.strptime(expiration_str, TIME_FORMAT).replace(tzinfo=timezone.utc)
+        expiration = deserialize_date(expiration_str)
         data['Expiration'] = expiration
     except Exception as e:
         LOGGER.debug('Could not parse expiration {}: {}'.format(expiration_str, e))
@@ -286,7 +321,7 @@ def save_cache(file_path, credentials):
             'ProviderType': 'aws-export-credentials',
             'Credentials': credentials._asdict()
         }
-        cache_data['Credentials']['Expiration'] = credentials.Expiration.strftime(TIME_FORMAT)
+        cache_data['Credentials']['Expiration'] = serialize_date(credentials.Expiration)
         os.makedirs(os.path.dirname(file_path), exist_ok=True)
         with open(file_path, 'w') as fp:
             json.dump(cache_data, fp)
@@ -354,7 +389,7 @@ class ContainerRequestHandler(BaseHTTPRequestHandler):
             if credentials.SessionToken:
                 body['Token'] = credentials.SessionToken
             if credentials.Expiration:
-                body['Expiration'] = credentials.Expiration.strftime(TIME_FORMAT)
+                body['Expiration'] = serialize_date(credentials.Expiration)
 
         body_bytes = json.dumps(body).encode('utf-8')
 
@@ -363,6 +398,109 @@ class ContainerRequestHandler(BaseHTTPRequestHandler):
         self.end_headers()
 
         self.wfile.write(body_bytes)
+
+class IMDSRequestHandler(BaseHTTPRequestHandler):
+    def __init__(self, request, client_address, server, token, session):
+        self._token = token
+        self._session = session
+        self._sts_client = self._session.create_client("sts")
+        self._role_name = None
+        super().__init__(request, client_address, server)
+
+    def send_error(self, status, code, message):
+        self.send_response(status)
+        body = {"Error": {"Code": code, "Message": message}}
+        body_bytes = json.dumps(body).encode('utf-8')
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", len(body_bytes))
+        self.end_headers()
+
+        self.wfile.write(body_bytes)
+
+    def send_ok(self, content_type, body):
+        self.send_response(HTTPStatus.OK)
+        if not isinstance(body, bytes):
+            body = json.dumps(body).encode("utf-8")
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", len(body))
+        self.end_headers()
+
+        self.wfile.write(body)
+
+    def do_PUT(self):
+        if self.path != "/latest/api/token":
+            return self.send_error(
+                HTTPStatus.NOT_FOUND,
+                "InvalidPath",
+                "Invalid path"
+            )
+
+        if self.headers["x-forwarded-for"]:
+            return self.send_error(
+                HTTPStatus.UNAUTHORIZED,
+                "InvalidHeader",
+                "PUT requests can't contain X-Forwarded-For"
+            )
+        if not self.headers["x-aws-ec2-metadata-token-ttl-seconds"]:
+            # TODO: the expiration isn't used or enforced
+            return self.send_error(
+                HTTPStatus.UNAUTHORIZED,
+                "MissingToken",
+                "The IMDSv2 token expiration header is missing"
+            )
+        return self.send_ok("text/plain", self._token.encode("ascii"))
+
+    def _ensure_role_name(self):
+        if not self._role_name:
+            response = self._sts_client.get_caller_identity()
+            arn = response["Arn"]
+            self._role_name = arn.rsplit("/", 1)[1]
+
+    def do_GET(self):
+        if self.path == "/latest/api/token":
+            return self.send_error(
+                HTTPStatus.METHOD_NOT_ALLOWED,
+                "MethodNotAllowed",
+                "Token must be obtained with PUT"
+            )
+
+        if self.headers["x-aws-ec2-metadata-token"] != self._token:
+            return self.send_error(
+                HTTPStatus.UNAUTHORIZED,
+                "MissingToken",
+                "The IMDSv2 token header is missing"
+            )
+        elif self.path == "/latest/meta-data/iam/security-credentials/":
+            self._ensure_role_name()
+            return self.send_ok("text/plain", self._role_name.encode("ascii"))
+        elif self.path.startswith("/latest/meta-data/iam/security-credentials/"):
+            self._ensure_role_name()
+            role_name = self.path.rsplit("/", 1)[1]
+            if role_name != self._role_name:
+                return self.send_error(
+                    HTTPStatus.FORBIDDEN,
+                    "InvalidRoleName",
+                    "The role name is incorrect"
+                )
+            else:
+                credentials = get_credentials(self._session)
+                body = {
+                    'AccessKeyId': credentials.AccessKeyId,
+                    'SecretAccessKey': credentials.SecretAccessKey,
+                }
+                if credentials.SessionToken:
+                    body['Token'] = credentials.SessionToken
+                if credentials.Expiration:
+                    body['Expiration'] = serialize_date(credentials.Expiration)
+                else:
+                    # An expiration is required
+                    body['Expiration'] = datetime.now(tz=timezone.utc) + timedelta(minutes=60)
+                return self.send_ok("application/json", body)
+        return self.send_error(
+            HTTPStatus.NOT_FOUND,
+            "InvalidPath",
+            "Invalid path"
+        )
 
 if __name__ == '__main__':
     main()

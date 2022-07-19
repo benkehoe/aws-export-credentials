@@ -68,17 +68,45 @@ aws-export-credentials --profile my-profile -c my-exported-profile
 ```
 Put the credentials in the given profile in your [shared credentials file](https://ben11kehoe.medium.com/aws-configuration-files-explained-9a7ea7a5b42e), which is typically `~/.aws/credentials` but can be controlled using the environment variable [`AWS_SHARED_CREDENTIALS_FILE`](https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-envvars.html).
 
-### Containers
-> :warning: This method of providing refreshable credentials only works on Linux using `--network host`. [On Mac](https://docs.docker.com/desktop/mac/networking/#use-cases-and-workarounds) and [Windows](https://docs.docker.com/desktop/windows/networking/#use-cases-and-workarounds), `--network host` doesn't work. On all three, without `--network host` the host cannot be referenced as `localhost`, only as `host.docker.internal`, which is not an allowed host the AWS SDKs. Alternatives include mounting your `~/.aws` directory or using the environment variables from `--env`.
+### Credential-serving options (e.g., for providing creds to containers)
+There are two credential-serving options, `--imds` for a server presenting the EC2 IMDSv2 interface, and `--container` for a server presenting the ECS container metadata credentials interface.
+
+There are probably good reasons why ECS chose to make its credential endpoints work the way they do, but unfortunately that limits the ability to use `aws-export-credentials` with it.
+Read the IMDS section first if you're using containers.
+
+#### IMDS
+You can use `--imds` to start a server, compliant with [the EC2 IMDSv2 endpoint](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/configuring-instance-metadata-service.html), that exports your credentials, and this can be used with containers.
+
+You provide `--imds` with a port (you can optionally provide the host part as well).
+
+If you're using docker, map the port from the host to the container, and set the environment variable `AWS_EC2_METADATA_SERVICE_ENDPOINT` to `http://host.docker.internal:MAPPED_PORT/` with the approporiate port and **remember to include the trailing slash.**
+
+AWS SDKs run inside the container should just work.
+```bash
+# in one terminal
+$ aws-export-credentials --imds 8081
+
+# in a separate terminal
+$ docker run --rm -p 8081:8081 -e AWS_EC2_METADATA_SERVICE_ENDPOINT=http://host.docker.internal:8081/
+amazon/aws-cli sts get-caller-identity
+{
+    "UserId": "AROAXXXXXXXXXXXXXXXXX:SessionName",
+    "Account": "123456789012",
+    "Arn": "arn:aws:sts::123456789012:assumed-role/SomeRole/SessionName"
+}
+```
+
+#### ECS
+> :warning: This method of providing credentials to containers doesn't work well. It only works on Linux using `--network host`. [On Mac](https://docs.docker.com/desktop/mac/networking/#use-cases-and-workarounds) and [Windows](https://docs.docker.com/desktop/windows/networking/#use-cases-and-workarounds), `--network host` is not available, the docker network is always separate. On all three, without `--network host` the host cannot be referenced as `localhost`, only as `host.docker.internal`, which is [not an allowed host the AWS SDKs](https://github.com/boto/botocore/issues/2515).
 
 You can use `--container` to start a server, compliant with the ECS metadata server, that exports your credentials, suitable for use with containers.
 
-You provide `--container` a port (you can optionally provide the host part as well) and an authorization token.
+You provide `--container` with a port (you can optionally provide the host part as well) and an authorization token.
 On your container, map the port from the server, set the `AWS_CONTAINER_CREDENTIALS_FULL_URI` environment variable to the URL as accessed inside the container, and set the `AWS_CONTAINER_AUTHORIZATION_TOKEN` environment variable to the same value you provided the server.
 
 You can use any value for the authorization, but it's best use a random value.
 
-```
+```bash
 # Generate token. For example, on Linux:
 AWS_CONTAINER_AUTHORIZATION_TOKEN=$(/proc/sys/kernel/random/uuid)
 
