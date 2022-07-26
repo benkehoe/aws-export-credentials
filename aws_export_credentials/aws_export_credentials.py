@@ -30,7 +30,7 @@ import secrets
 from botocore.session import Session
 from botocore.credentials import ReadOnlyCredentials
 
-__version__ = '0.11.0'
+__version__ = '0.12.0'
 
 LOGGER = logging.getLogger('aws-export-credentials')
 
