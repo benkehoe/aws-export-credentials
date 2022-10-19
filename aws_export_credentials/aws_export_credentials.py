@@ -454,7 +454,14 @@ class IMDSRequestHandler(BaseHTTPRequestHandler):
         if not self._role_name:
             response = self._sts_client.get_caller_identity()
             arn = response["Arn"]
-            self._role_name = arn.rsplit("/", 1)[1]
+            arn_parts = arn.split(":")
+            name_parts = arn_parts[-1].split("/")
+            name_type = name_parts[0]
+            if name_type == "user":
+                role_name = name_parts[-1]
+            else:
+                role_name = name_parts[1]
+            self._role_name = role_name
 
     def do_GET(self):
         if self.path == "/latest/api/token":
