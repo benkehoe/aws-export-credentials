@@ -6,6 +6,8 @@ inject them into programs, but all the ones I've seen use the CLI's cache
 files directly, rather than leveraging botocore's ability to retrieve and
 refresh credentials. So I wrote this to do that.
 
+> :warning: If you want to inject refreshable credentials into a locally-run container, [imds-credential-server](https://github.com/benkehoe/imds-credential-server) is a more focused solution for that.
+
 [botocore (the underlying Python SDK library)](https://botocore.amazonaws.com/v1/documentation/api/latest/index.html) has added support for loading credentials cached by [`aws sso login`](https://awscli.amazonaws.com/v2/documentation/api/latest/reference/sso/login.html) as of [version 1.17.0](https://github.com/boto/botocore/blob/develop/CHANGELOG.rst#1170).
 `aws-export-credentials` now requires botocore >= 1.17.0, and so supports AWS SSO credentials as well.
 If all you want is AWS SSO support for an SDK other than Python, Go, or JavaScript (v3), take a look at [aws-sso-util](https://github.com/benkehoe/aws-sso-util#adding-aws-sso-support-to-aws-sdks), which can help you configure your profiles with a [credential process](https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-sourcing-external.html) that doesn't require the credential injection process that `aws-export-credentials` does.
@@ -68,11 +70,10 @@ aws-export-credentials --profile my-profile -c my-exported-profile
 ```
 Put the credentials in the given profile in your [shared credentials file](https://ben11kehoe.medium.com/aws-configuration-files-explained-9a7ea7a5b42e), which is typically `~/.aws/credentials` but can be controlled using the environment variable [`AWS_SHARED_CREDENTIALS_FILE`](https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-envvars.html).
 
-### Credential-serving options (e.g., for providing creds to containers)
+### Credential-serving options
 There are two credential-serving options, `--imds` for a server presenting the EC2 IMDSv2 interface, and `--container` for a server presenting the ECS container metadata credentials interface.
 
-There are probably good reasons why ECS chose to make its credential endpoints work the way they do, but unfortunately that limits the ability to use `aws-export-credentials` with it.
-Read the IMDS section first if you're using containers.
+> :warning: If you want to inject refreshable credentials into a locally-run container, [imds-credential-server](https://github.com/benkehoe/imds-credential-server) is a more focused solution for that.
 
 #### IMDS
 You can use `--imds` to start a server, compliant with [the EC2 IMDSv2 endpoint](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/configuring-instance-metadata-service.html), that exports your credentials, and this can be used with containers.
