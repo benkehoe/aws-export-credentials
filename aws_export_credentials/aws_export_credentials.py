@@ -494,7 +494,7 @@ class IMDSRequestHandler(BaseHTTPRequestHandler):
                     body['Expiration'] = serialize_date(credentials.Expiration)
                 else:
                     # An expiration is required
-                    body['Expiration'] = datetime.now(tz=timezone.utc) + timedelta(minutes=60)
+                    body['Expiration'] = serialize_date(datetime.now(tz=timezone.utc) + timedelta(minutes=60))
                 return self.send_ok("application/json", body)
         return self.send_error(
             HTTPStatus.NOT_FOUND,
