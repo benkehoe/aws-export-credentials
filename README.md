@@ -1,10 +1,10 @@
 # aws-export-credentials
 **Get AWS credentials from a profile to inject into other programs**
 
-There are a number of other projects that extract AWS credentials and/or
-inject them into programs, but all the ones I've seen use the CLI's cache
-files directly, rather than leveraging botocore's ability to retrieve and
-refresh credentials. So I wrote this to do that.
+There are a number of other projects that extract AWS credentials and/or inject them
+into programs, but all the ones I've seen (including `aws configure export-credentials`
+command) use the CLI's cache files directly, rather than  leveraging botocore's ability
+to retrieve and refresh credentials. So I wrote this to do that.
 
 > :warning: If you want to inject refreshable credentials into a locally-run container, [imds-credential-server](https://github.com/benkehoe/imds-credential-server) is a more focused solution for that.
 
