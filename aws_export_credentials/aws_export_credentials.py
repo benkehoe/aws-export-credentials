@@ -30,7 +30,7 @@ import secrets
 from botocore.session import Session
 from botocore.credentials import ReadOnlyCredentials
 
-__version__ = '0.13.0'
+__version__ = '0.14.0'
 
 LOGGER = logging.getLogger('aws-export-credentials')
 
@@ -188,7 +188,7 @@ def main():
         if credentials.SessionToken:
             os.environ['AWS_SESSION_TOKEN'] = credentials.SessionToken
         if credentials.Expiration:
-            os.environ['AWS_CREDENTIALS_EXPIRATION'] = serialize_date(credentials.Expiration)
+            os.environ['AWS_CREDENTIAL_EXPIRATION'] = serialize_date(credentials.Expiration)
 
         region_name = session.get_config_variable('region')
         if region_name:
@@ -225,7 +225,7 @@ def main():
         if credentials.SessionToken:
             lines.append('{}AWS_SESSION_TOKEN={}'.format(prefix, credentials.SessionToken))
         if credentials.Expiration:
-            lines.append('{}AWS_CREDENTIALS_EXPIRATION={}'.format(prefix, serialize_date(credentials.Expiration)))
+            lines.append('{}AWS_CREDENTIAL_EXPIRATION={}'.format(prefix, serialize_date(credentials.Expiration)))
         print('\n'.join(lines))
     elif args.credentials_file_profile:
         values = {
@@ -235,7 +235,7 @@ def main():
         if credentials.SessionToken:
             values['aws_session_token'] = credentials.SessionToken
         if credentials.Expiration:
-            values['aws_credentials_expiration'] = serialize_date(credentials.Expiration)
+            values['aws_credential_expiration'] = serialize_date(credentials.Expiration)
 
         write_values(session, args.credentials_file_profile, values)
     elif args.container:
