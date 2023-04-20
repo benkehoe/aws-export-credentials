@@ -28,7 +28,6 @@ import functools
 import secrets
 
 from botocore.session import Session
-from botocore.credentials import ReadOnlyCredentials
 
 __version__ = '0.14.0'
 
@@ -195,7 +194,7 @@ def main():
             os.environ['AWS_DEFAULT_REGION'] = region_name
 
         command = ' '.join(shlex.quote(arg) for arg in args.exec)
-        os.system(command)
+        sys.exit(os.system(command))
     elif args.format == 'json':
         data = {
             'Version': 1,
