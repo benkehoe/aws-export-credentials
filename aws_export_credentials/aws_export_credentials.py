@@ -26,6 +26,7 @@ from http.server import HTTPServer, BaseHTTPRequestHandler
 from http import HTTPStatus
 import functools
 import secrets
+import subprocess
 
 from botocore.session import Session
 
@@ -177,24 +178,28 @@ def main():
             sys.exit(3)
 
     if args.exec:
-        for key in ['AWS_PROFILE', 'AWS_DEFAULT_PROFILE']:
-            os.environ.pop(key, None)
+        env = os.environ.copy()
 
-        os.environ.update({
+        for key in ['AWS_PROFILE', 'AWS_DEFAULT_PROFILE']:
+            env.pop(key, None)
+
+        env.update({
+            'AWS_CLI_AUTO_PROMPT': 'off',
             'AWS_ACCESS_KEY_ID': credentials.AccessKeyId,
             'AWS_SECRET_ACCESS_KEY': credentials.SecretAccessKey,
         })
         if credentials.SessionToken:
-            os.environ['AWS_SESSION_TOKEN'] = credentials.SessionToken
+            env['AWS_SESSION_TOKEN'] = credentials.SessionToken
         if credentials.Expiration:
-            os.environ['AWS_CREDENTIAL_EXPIRATION'] = serialize_date(credentials.Expiration)
+            env['AWS_CREDENTIAL_EXPIRATION'] = serialize_date(credentials.Expiration)
 
         region_name = session.get_config_variable('region')
         if region_name:
-            os.environ['AWS_DEFAULT_REGION'] = region_name
-
+            env['AWS_DEFAULT_REGION'] = region_name
+        
         command = ' '.join(shlex.quote(arg) for arg in args.exec)
-        sys.exit(os.system(command))
+        result = subprocess.run(command, shell=True, env=env)
+        sys.exit(result.returncode)
     elif args.format == 'json':
         data = {
             'Version': 1,
