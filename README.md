@@ -5,11 +5,11 @@
 > 
 > If you want to inject refreshable credentials into a locally-run container, [`imds-credential-server`](https://github.com/benkehoe/imds-credential-server) is a more focused solution for that.
 
-There are a number of other projects that extract AWS credentials and/or inject them into programs, but all the ones I've seen use the CLI's cache files directly, rather than leveraging botocore's ability to retrieve and refresh credentials.
+There are a number of other projects that extract AWS credentials and/or inject them into programs, but all the ones I've seen use the CLI's cache files directly, rather than leveraging boto3's ability to retrieve and refresh credentials.
 So I wrote this to do that.
 
-[botocore (the underlying Python SDK library)](https://botocore.amazonaws.com/v1/documentation/api/latest/index.html) has added support for loading credentials cached by [`aws sso login`](https://awscli.amazonaws.com/v2/documentation/api/latest/reference/sso/login.html) as of [version 1.17.0](https://github.com/boto/botocore/blob/develop/CHANGELOG.rst#1170).
-`aws-export-credentials` now requires botocore >= 1.17.0, and so supports AWS SSO credentials as well.
+[boto3 (the AWS Python SDK)](https://boto3.amazonaws.com/v1/documentation/api/latest/index.html) has added support for loading credentials cached by [`aws sso login`](https://awscli.amazonaws.com/v2/documentation/api/latest/reference/sso/login.html) as of [botocore version 1.17.0](https://github.com/boto/botocore/blob/develop/CHANGELOG.rst#1170).
+`aws-export-credentials` now requires boto3 >= 1.14.0, and so supports AWS SSO credentials as well.
 If all you want is AWS SSO support for an SDK other than Python, Go, or JavaScript (v3), take a look at [aws-sso-util](https://github.com/benkehoe/aws-sso-util#adding-aws-sso-support-to-aws-sdks), which can help you configure your profiles with a [credential process](https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-sourcing-external.html) that doesn't require the credential injection process that `aws-export-credentials` does.
 
 ## Quickstart
@@ -37,7 +37,7 @@ You can also download the Python file directly [here](https://raw.githubusercont
 
 ## Usage
 ### Profile
-Profiles work like in the AWS CLI (since it uses botocore); it will pick up the `AWS_PROFILE`
+Profiles work like in the AWS CLI (since it uses boto3); it will pick up the `AWS_PROFILE`
 or `AWS_DEFAULT_PROFILE` env vars, but the `--profile` argument takes precedence.
 
 ### JSON
@@ -131,6 +131,12 @@ By default, cached credentials are considered expired if their expiration is les
 You can change this value using the `--cache-expiration-buffer` argument, which takes a number of minutes.
 
 You can force the cache to refresh using `--refresh`.
+
+## Temporary credentials
+IAM Users and the account root have long-term credentials, which carry higher risk than temporary credentials.
+The [STS.GetSessionToken](https://docs.aws.amazon.com/STS/latest/APIReference/API_GetSessionToken.html) API call exists to provide temporary credentials based on these long-term credentials.
+If you pass the `--ensure-temporary` flag, it will use this API to get temporary credentials to export for an IAM User or account root.
+This process is always used for `--imds` and `--container`.
 
 # Role assumption
 In general, it's better to do role assumption by using profiles in `~/.aws/config` like this:

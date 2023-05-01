@@ -28,7 +28,7 @@ import functools
 import secrets
 import subprocess
 
-from botocore.session import Session
+from boto3 import Session
 
 __version__ = '0.16.0'
 
@@ -71,25 +71,49 @@ def parse_imds_arg(value):
     return host, port
 
 def serialize_date(dt):
+    if isinstance(dt, str):
+        return dt
     return dt.strftime(TIME_FORMAT)
 
 def deserialize_date(dt_str):
     return datetime.strptime(dt_str, TIME_FORMAT).replace(tzinfo=timezone.utc)
 
-def get_credentials(session):
+def get_credentials(session, ensure_temporary=False, ensure_expiration=False):
     session_credentials = session.get_credentials()
     if not session_credentials:
         return None
 
     read_only_credentials = session_credentials.get_frozen_credentials()
+
+    if ensure_temporary and not read_only_credentials.token:
+        return get_temporary_credentials(session)
+
     expiration = None
+
     if hasattr(session_credentials, '_expiry_time') and session_credentials._expiry_time:
         if isinstance(session_credentials._expiry_time, datetime):
             expiration = session_credentials._expiry_time
         else:
             LOGGER.debug("Expiration in session credentials is of type {}, not datetime".format(type(expiration)))
+
+    if not expiration and ensure_expiration:
+        # provide an expiration, even if it's wrong
+        expiration = datetime.now(tz=timezone.utc) + timedelta(hours=1)
+
     credentials = convert_creds(read_only_credentials, expiration)
     return credentials
+
+def get_temporary_credentials(session):
+    sts_client = session.client('sts')
+    response = sts_client.get_session_token()
+    response_creds = response['Credentials']
+
+    return Credentials(
+        AccessKeyId=response_creds['AccessKeyId'],
+        SecretAccessKey=response_creds['SecretAccessKey'],
+        SessionToken=response_creds['SessionToken'],
+        Expiration=response_creds['Expiration']
+    )
 
 def main():
     parser = argparse.ArgumentParser(description=DESCRIPTION)
@@ -105,6 +129,7 @@ def main():
     group.add_argument('--container', nargs=2, metavar=('HOST_PORT', 'TOKEN'), help="Start an ECS-compatible server on [HOST:]PORT, requires TOKEN for auth")
     group.add_argument('--imds', metavar='HOST_PORT', help="Start an IMDSv2 server on [HOST:]PORT")
 
+    parser.add_argument('--ensure-temporary', action='store_true', help='Get temporary credentials for IAM and root users')
     parser.add_argument('--pretty', action='store_true', help='For --json, pretty-print')
 
     parser.add_argument('--version', action='store_true')
@@ -158,12 +183,12 @@ def main():
         credentials = load_cache(args.cache_file, args.cache_expiration_buffer)
 
     if credentials and args.credentials_file_profile:
-        session = Session(profile=args.profile)
+        session = Session(profile_name=args.profile)
     elif not credentials:
         try:
-            session = Session(profile=args.profile)
+            session = Session(profile_name=args.profile)
 
-            credentials = get_credentials(session)
+            credentials = get_credentials(session, ensure_temporary=args.ensure_temporary)
 
             if not credentials:
                 print('Unable to locate credentials.', file=sys.stderr)
@@ -193,10 +218,10 @@ def main():
         if credentials.Expiration:
             env['AWS_CREDENTIAL_EXPIRATION'] = serialize_date(credentials.Expiration)
 
-        region_name = session.get_config_variable('region')
+        region_name = session.region_name
         if region_name:
             env['AWS_DEFAULT_REGION'] = region_name
-        
+
         command = ' '.join(shlex.quote(arg) for arg in args.exec)
         result = subprocess.run(command, shell=True, env=env)
         sys.exit(result.returncode)
@@ -385,15 +410,13 @@ class ContainerRequestHandler(BaseHTTPRequestHandler):
             body = {"Error": {"Code": "InvalidToken", "Message": "The provided token was invalid"}}
         else:
             self.send_response(HTTPStatus.OK)
-            credentials = get_credentials(self._session)
+            credentials = get_credentials(self._session, ensure_temporary=True, ensure_expiration=True)
             body = {
                 'AccessKeyId': credentials.AccessKeyId,
                 'SecretAccessKey': credentials.SecretAccessKey,
+                'Token': credentials.SessionToken,
+                'Expiration': serialize_date(credentials.Expiration)
             }
-            if credentials.SessionToken:
-                body['Token'] = credentials.SessionToken
-            if credentials.Expiration:
-                body['Expiration'] = serialize_date(credentials.Expiration)
 
         body_bytes = json.dumps(body).encode('utf-8')
 
@@ -407,7 +430,7 @@ class IMDSRequestHandler(BaseHTTPRequestHandler):
     def __init__(self, request, client_address, server, token, session):
         self._token = token
         self._session = session
-        self._sts_client = self._session.create_client("sts")
+        self._sts_client = self._session.client("sts")
         self._role_name = None
         super().__init__(request, client_address, server)
 
@@ -494,18 +517,13 @@ class IMDSRequestHandler(BaseHTTPRequestHandler):
                     "The role name is incorrect"
                 )
             else:
-                credentials = get_credentials(self._session)
+                credentials = get_credentials(self._session, ensure_temporary=True, ensure_expiration=True)
                 body = {
                     'AccessKeyId': credentials.AccessKeyId,
                     'SecretAccessKey': credentials.SecretAccessKey,
+                    'Token': credentials.SessionToken,
+                    'Expiration': serialize_date(credentials.Expiration)
                 }
-                if credentials.SessionToken:
-                    body['Token'] = credentials.SessionToken
-                if credentials.Expiration:
-                    body['Expiration'] = serialize_date(credentials.Expiration)
-                else:
-                    # An expiration is required
-                    body['Expiration'] = serialize_date(datetime.now(tz=timezone.utc) + timedelta(minutes=60))
                 return self.send_ok("application/json", body)
         return self.send_error(
             HTTPStatus.NOT_FOUND,
