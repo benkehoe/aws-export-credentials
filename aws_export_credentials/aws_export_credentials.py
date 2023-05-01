@@ -194,7 +194,11 @@ def main():
             os.environ['AWS_DEFAULT_REGION'] = region_name
 
         command = ' '.join(shlex.quote(arg) for arg in args.exec)
-        sys.exit(os.system(command))
+        code = os.system(command)
+        # see https://docs.python.org/3/library/os.html#os.wait
+        if os.name != 'nt':
+            code = os.waitstatus_to_exitcode(code)
+        sys.exit(code)
     elif args.format == 'json':
         data = {
             'Version': 1,
