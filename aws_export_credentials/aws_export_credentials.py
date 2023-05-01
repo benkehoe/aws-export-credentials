@@ -30,7 +30,7 @@ import subprocess
 
 from botocore.session import Session
 
-__version__ = '0.15.0'
+__version__ = '0.16.0'
 
 LOGGER = logging.getLogger('aws-export-credentials')
 
