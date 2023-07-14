@@ -98,7 +98,7 @@ amazon/aws-cli sts get-caller-identity
 ```
 
 #### ECS
-> :warning: This method of providing credentials to containers doesn't work well. It only works on Linux using `--network host`. [On Mac](https://docs.docker.com/desktop/mac/networking/#use-cases-and-workarounds) and [Windows](https://docs.docker.com/desktop/windows/networking/#use-cases-and-workarounds), `--network host` is not available, the docker network is always separate. On all three, without `--network host` the host cannot be referenced as `localhost`, only as `host.docker.internal`, which is [not an allowed host the AWS SDKs](https://github.com/boto/botocore/issues/2515).
+> :warning: This method of providing credentials to containers doesn't work well. It only works on Linux using `--network host`. [On Mac](https://docs.docker.com/desktop/mac/networking/#use-cases-and-workarounds) and [Windows](https://docs.docker.com/desktop/windows/networking/#use-cases-and-workarounds), `--network host` is not available, the docker network is always separate. On all three, without `--network host` the host cannot be referenced as `localhost`, only as `host.docker.internal`, which is [not an allowed host the AWS SDKs](https://github.com/aws/aws-sdk/issues/562).
 
 You can use `--container` to start a server, compliant with the ECS metadata server, that exports your credentials, suitable for use with containers.
 
