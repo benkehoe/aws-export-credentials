@@ -30,7 +30,7 @@ import subprocess
 
 from boto3 import Session
 
-__version__ = '0.16.0'
+__version__ = '0.17.0' # Update here and pyproject.toml
 
 LOGGER = logging.getLogger('aws-export-credentials')
 

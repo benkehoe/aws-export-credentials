@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "aws-export-credentials"
-version = "0.16.0"
+version = "0.17.0" # Update here and aws_export_credentials.py
 description = "Get AWS credentials from a profile to inject into other programs"
 authors = ["Ben Kehoe <ben@kehoe.io>"]
 license = "Apache-2.0"
