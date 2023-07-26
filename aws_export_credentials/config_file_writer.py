@@ -21,6 +21,9 @@ class SectionNotFoundError(Exception):
     pass
 
 def get_config_filename(session):
+    # get botocore session if it's a boto3 session
+    if hasattr(session, "_session"):
+        session = session._session
     return os.path.expanduser(session.get_config_variable('config_file'))
 
 _WHITESPACE = ' \t'
@@ -30,6 +33,9 @@ def process_profile_name(profile_name):
     return profile_name
 
 def write_values(session, profile_name, values, config_file_writer=None, existing_config_action=None):
+    # get botocore session if it's a boto3 session
+    if hasattr(session, "_session"):
+        session = session._session
     if not config_file_writer:
         config_file_writer = ConfigFileWriter()
 
