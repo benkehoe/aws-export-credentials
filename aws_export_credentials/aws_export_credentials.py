@@ -188,7 +188,9 @@ def main():
         try:
             session = Session(profile_name=args.profile)
 
-            credentials = get_credentials(session, ensure_temporary=args.ensure_temporary)
+            ensure_temporary = bool(args.ensure_temporary or args.container or args.imds)
+
+            credentials = get_credentials(session, ensure_temporary=ensure_temporary)
 
             if not credentials:
                 print('Unable to locate credentials.', file=sys.stderr)
@@ -444,12 +446,15 @@ class IMDSRequestHandler(BaseHTTPRequestHandler):
 
         self.wfile.write(body_bytes)
 
-    def send_ok(self, content_type, body):
+    def send_ok(self, content_type, body, *, headers=None):
         self.send_response(HTTPStatus.OK)
         if not isinstance(body, bytes):
             body = json.dumps(body).encode("utf-8")
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", len(body))
+        if headers:
+            for key, value in headers.items():
+                self.send_header(key, value)
         self.end_headers()
 
         self.wfile.write(body)
@@ -475,7 +480,8 @@ class IMDSRequestHandler(BaseHTTPRequestHandler):
                 "MissingToken",
                 "The IMDSv2 token expiration header is missing"
             )
-        return self.send_ok("text/plain", self._token.encode("ascii"))
+        headers = {"x-aws-ec2-metadata-token-ttl-seconds": self.headers["x-aws-ec2-metadata-token-ttl-seconds"]}
+        return self.send_ok("text/plain", self._token.encode("ascii"), headers=headers)
 
     def _ensure_role_name(self):
         if not self._role_name:
@@ -498,11 +504,17 @@ class IMDSRequestHandler(BaseHTTPRequestHandler):
                 "Token must be obtained with PUT"
             )
 
-        if self.headers["x-aws-ec2-metadata-token"] != self._token:
+        if "x-aws-ec2-metadata-token" not in self.headers:
             return self.send_error(
                 HTTPStatus.UNAUTHORIZED,
                 "MissingToken",
                 "The IMDSv2 token header is missing"
+            )
+        elif self.headers["x-aws-ec2-metadata-token"].strip() != self._token:
+            return self.send_error(
+                HTTPStatus.UNAUTHORIZED,
+                "MissingToken",
+                "The IMDSv2 token header is invalid"
             )
         elif self.path == "/latest/meta-data/iam/security-credentials/":
             self._ensure_role_name()
@@ -522,7 +534,10 @@ class IMDSRequestHandler(BaseHTTPRequestHandler):
                     'AccessKeyId': credentials.AccessKeyId,
                     'SecretAccessKey': credentials.SecretAccessKey,
                     'Token': credentials.SessionToken,
-                    'Expiration': serialize_date(credentials.Expiration)
+                    'Expiration': serialize_date(credentials.Expiration),
+                    'Code': 'Success',
+                    'LastUpdated': serialize_date(datetime.now(tz=timezone.utc)),
+                    'Type': 'AWS-HMAC'
                 }
                 return self.send_ok("application/json", body)
         return self.send_error(
